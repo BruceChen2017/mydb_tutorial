@@ -1,0 +1,1 @@
+This tutorial just follows [db_tutorial_site](https://cstack.github.io/db_tutorial/) and [db_tutorial_repo](https://github.com/cstack/db_tutorial)
