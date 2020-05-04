@@ -72,6 +72,36 @@ typedef enum {
 } ExecuteResult;
 
 
+typedef struct {
+    Table * table;
+    uint32_t row_num; // which row(zero-based) cursor currently points to
+    bool end_of_table; // Indicates a position one past the last element
+}Cursor;
+
+Cursor * table_start(Table * table){
+    Cursor * cursor = malloc(sizeof(Cursor));
+    cursor->table = table;
+    cursor->row_num = 0;
+    cursor->end_of_table = (table->num_rows == 0);
+    return cursor;
+}
+
+Cursor * table_end(Table * table){
+    Cursor * cursor = malloc(sizeof(Cursor));
+    cursor->table = table;
+    cursor->row_num = table->num_rows;
+    cursor->end_of_table = true;
+    return cursor;
+}
+
+void cursor_advance(Cursor * cursor){
+    cursor->row_num += 1;
+    if (cursor->row_num >= cursor->table->num_rows){
+        cursor->end_of_table = true;
+    }
+}
+
+
 // initialize
 InputBuffer* new_input_buffer(){
     InputBuffer * input_buffer = malloc(sizeof(InputBuffer));
@@ -291,9 +321,10 @@ void* get_page(Pager * pager, uint32_t page_num){
     return pager->pages[page_num];
 }
 
-void * row_slot(Table * table, uint32_t row_num){
+void * cursor_value(Cursor * cursor){
+    uint32_t row_num = cursor->row_num;
     uint32_t page_num = row_num / ROWS_PER_PAGE;
-    void * page = get_page(table->pager, page_num);
+    void * page = get_page(cursor->table->pager, page_num);
     uint32_t row_offset = row_num % ROWS_PER_PAGE;
     uint32_t byte_offset = row_offset * ROW_SIZE;
     return page + byte_offset;
@@ -348,9 +379,11 @@ ExecuteResult execute_insert(Statement * statement, Table * table){
     if (table->num_rows >= TABLE_MAX_ROWS){
         return EXECUTE_TABLE_FULL;
     }
+    Cursor * cursor = table_end(table);
     Row * row_to_insert = &(statement->row_to_insert);
-    serialize_row(row_to_insert, row_slot(table, table->num_rows));
+    serialize_row(row_to_insert, cursor_value(cursor));
     table->num_rows += 1;
+    free(cursor);
     return EXIT_SUCCESS;
 }
 
@@ -360,10 +393,13 @@ void print_row(Row * row){
 
 ExecuteResult execute_select(Table * table){
     Row row;
-    for (uint32_t i = 0; i < table->num_rows; i++){
-        deserialize_row(row_slot(table, i), &row);
+    Cursor * cursor = table_start(table);
+    while (cursor->end_of_table != true){
+        deserialize_row(cursor_value(cursor), &row);
+        cursor_advance(cursor);
         print_row(&row);
     }
+    free(cursor);
     return EXECUTE_SUCCESS;
 }
 
